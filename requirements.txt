@@ -1,1 +1,12 @@
+langgraph
+langchain
+langchain-cerebras
+langchain-core
+langsmith
 streamlit
+pandas
+langchain_experimental
+matplotlib
+cerebras_cloud_sdk
+Duckduckgo_search
+streamlit-feedback

@@ -10,3 +10,6 @@ matplotlib
 cerebras_cloud_sdk
 Duckduckgo_search
 streamlit-feedback
+langchain-groq
+langchain-community>=0.2.11 
+tavily-python

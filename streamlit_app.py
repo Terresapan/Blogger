@@ -3,13 +3,15 @@ import streamlit as st
 from utils import save_feedback
 import time
 from langchain_cerebras import ChatCerebras
+from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 from typing import Annotated
 from langgraph.graph import END
 from langchain_cerebras import ChatCerebras
-from langchain_community.tools import DuckDuckGoSearchRun
+from langchain.tools.tavily_search import TavilySearchResults
+from langchain_core.messages import HumanMessage, AIMessage
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]["API_KEY"]
@@ -19,7 +21,8 @@ os.environ["LANGCHAIN_PROJECT"] = "Short Video Theme Researcher"
 st.sidebar.header("✏️ Short Video Theme Researcher")
 st.sidebar.markdown(
     "This app helps you find trending short video themes based on your interests. "
-    "To use this app, you'll need to provide a Cerebras API key, which you can obtain for free [here](https://cloud.cerebras.ai/platform/org_nxh29kc28dt5rvrcphxv54et/apikeys)."
+    "To use this app, you'll need to provide a Cerebras API key, which you can obtain for free [here](https://cloud.cerebras.ai/platform/org_nxh29kc28dt5rvrcphxv54et/apikeys) "
+    "and a Tavily Search key, which you can obtain [here](https://app.tavily.com/home)."
 )
 st.sidebar.write("### Instructions")
 st.sidebar.write(":pencil: Enter a video idea you would like to explore.")
@@ -51,12 +54,12 @@ final_result = []
 
 # Ask user for their Gemini API key via `st.text_input`.
 Cerebras_api_key = st.text_input("Cerebras API Key", type="password", placeholder="Your Cerebras API key here...")
-if not Cerebras_api_key:
-    st.info("Please add your Cerebras API key to continue.", icon="🗝️")
+Tavily_api_key = st.text_input("Tavily API Key", type="password", placeholder="Your Tavily API key here...")
+
+if not Cerebras_api_key or not Tavily_api_key:
+    st.info("Please add your Cerebras and Tavily to continue.", icon="🗝️")
 else:
-
-
-
+    os.environ["TAVILY_API_KEY"] = Tavily_api_key
     class State(TypedDict):
         query: Annotated[list, add_messages]
         research: Annotated[list, add_messages]
@@ -67,8 +70,17 @@ else:
 
     # Initialize ChatCerebras instance for language model
     llm = ChatCerebras(api_key=Cerebras_api_key, model="llama3.1-70b")
+    # llm = ChatGroq(api_key=Cerebras_api_key, model="llama-3.1-70b-versatile")
 
     class ResearchAgent:
+        def __init__(self):
+            self.tavily_tool = TavilySearchResults(
+                max_results=5,
+                include_answer=True,
+                include_raw_content=True,
+                include_images=True,
+            )
+
         def format_search(self, query: str) -> str:
             prompt = (
                 "You are an expert at optimizing search queries for Google. "
@@ -89,19 +101,28 @@ else:
             return response.content
         
         def search(self, state: State):
-            search = DuckDuckGoSearchRun()
-
             start_time = time.perf_counter()
             optimized_query = self.format_search(state.get('query', "")[-1].content)
+            results = self.tavily_tool.invoke({'query': optimized_query})
             end_time = time.perf_counter()
-
-            results = search.invoke(optimized_query)
 
             state["optimized_query"] = optimized_query
 
-            final_result.append({"subheader": f"Research Iteration", "content": [results], "time": end_time - start_time})
-            print(results)
-            return {"research": results}
+            # Format the results as a string
+            formatted_results = self.format_results(results)
+
+            final_result.append({"subheader": f"Research Iteration", "content": [formatted_results], "time": end_time - start_time})
+            print(formatted_results)
+            return {"research": [AIMessage(content=formatted_results)]}
+
+        def format_results(self, results):
+            formatted = "Search Results:\n\n"
+            for item in results:
+                formatted += f"Title: {item.get('title', 'N/A')}\n"
+                formatted += f"URL: {item.get('url', 'N/A')}\n"
+                formatted += f"Content: {item.get('content', 'N/A')}\n\n"
+            return formatted
+
         
     class EditorAgent:
         def evaluate_research(self, state: State):

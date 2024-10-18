@@ -264,6 +264,10 @@ else:
             progress_bar = st.progress(0)
             status_text = st.empty()
 
+            st.markdown("## A Detailed Discussion")
+
+            output_container = st.empty()
+
             def update_progress(step, total_steps):
                 progress = int((step / total_steps) * 100)
                 progress_bar.progress(progress)
@@ -287,10 +291,7 @@ else:
             progress_bar.empty()
             status_text.empty()
 
-            st.subheader("A Detailed Discussion")
-            st.write(f"Time taken: {end_time - start_time:.2f} seconds")
-            st.session_state.generated_content = blogpost["content"]
+            stream_handler = StreamHandler(output_container, initial_text=blogpost["content"])
+            stream_handler.on_llm_new_token("")
 
-    # Display the generated content (it will be updated in real-time due to streaming)
-    if st.session_state.generated_content:
-        st.markdown(st.session_state.generated_content)
+            output_container.write(f"Time taken: {end_time - start_time:.2f} seconds")

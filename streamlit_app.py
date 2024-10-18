@@ -2,15 +2,14 @@ import os
 import streamlit as st
 from utils import save_feedback
 import time
-from langchain_cerebras import ChatCerebras
 from langchain_groq import ChatGroq
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
-from typing import Annotated
+from typing import Annotated,List
 from langgraph.graph import END
 from langchain_cerebras import ChatCerebras
-from langchain.tools.tavily_search import TavilySearchResults
+from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from langchain_core.messages import HumanMessage, AIMessage
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
@@ -62,6 +61,8 @@ else:
     os.environ["TAVILY_API_KEY"] = Tavily_api_key
     class State(TypedDict):
         query: Annotated[list, add_messages]
+        subqueries: List[str]
+        optimized_query: List[str]
         research: Annotated[list, add_messages]
         content: str
         content_ready: bool
@@ -75,47 +76,87 @@ else:
     class ResearchAgent:
         def __init__(self):
             self.tavily_tool = TavilySearchResults(
-                max_results=5,
+                max_results=3,
                 include_answer=True,
                 include_raw_content=True,
                 include_images=True,
             )
 
         def format_search(self, query: str) -> str:
+            """
+            Takes the user query and returns a list of optimized subqueries.
+            If the query is complex, breaks it down into subqueries.
+            """
             prompt = (
-                "You are an expert at optimizing search queries for Google. "
-                "Your task is to take a given query and return an optimized version of it, making it more likely to yield relevant results. "
+                "You are an expert at breaking down user's query into subqueries if needed and optimizing these search queries for Google. "
+                "Your task is to take a given query, break it down into step by step thought process and return an optimized version of it, making it more likely to yield relevant results. "
                 "Do not include any explanations or extra text, only the optimized query.\n\n"
+                "The breakdown of subqueries should be limited to a maximum of three subqueries"
                 "Example:\n"
-                "Original: best laptop 2023 for programming\n"
-                "Optimized: top laptops 2023 for coding\n\n"
+                "Original: How to create a successful AI-powered content strategy\n"
+                "Optimized: What are the best AI tools for content creation\n\n"
+                "Optimized: How to use [specific AI tool] to develop a content strategy\n\n"
+                "Optimized: How to measure the success of an AI-powered content strategy\n\n"
                 "Example:\n"
-                "Original: how to train a puppy not to bite\n"
-                "Optimized: puppy training tips to prevent biting\n\n"
-                "Now optimize the following query:\n"
+                "Original: How do I generate leads using content marketing\n"
+                "Optimized: How to use blog posts for lead generation\n\n"
+                "Optimized: Generating leads through video content marketing\n\n"
+                "Optimized: Using downloadable content for lead generation\n\n"
+                "Example:\n"
+                "Original: compare cats and dogs eating habits\n"
+                "Optimized: eating habits of cats\n"
+                "Optimized: eating habits of dogs\n\n"
+                "The breakdown of subqueries should be limited to a maximum of three subqueries. Now optimize the following query:\n"
                 f"Original: {query}\n"
                 "Optimized:"
             )
-            
-            response = llm.invoke(prompt)  
-            return response.content
+
+            # Call LLM to process the prompt and return optimized subqueries
+            response = llm.invoke(prompt)
+
+            # Split the response content into a list of subqueries
+            optimized_subqueries = response.content.splitlines()
+            optimized_subqueries = [subquery for subquery in optimized_subqueries if subquery.strip()]
         
+            return optimized_subqueries
+            
+      
         def search(self, state: State):
+            """
+            Handles multiple searches if the query is broken into subqueries.
+            Aggregates the results from each subquery into the final content.
+            """
             start_time = time.perf_counter()
-            optimized_query = self.format_search(state.get('query', "")[-1].content)
-            results = self.tavily_tool.invoke({'query': optimized_query})
+
+            # Get the last user query and format it
+            user_query = state.get('query', "")[-1].content
+            optimized_queries = self.format_search(user_query)
+            state["optimized_query"] = optimized_queries  # Store optimized subqueries in state
+
+            final_results = []
+            for i, subquery in enumerate(optimized_queries):
+                results = self.tavily_tool.invoke({'query': subquery})
+                formatted_results = self.format_results(results)
+                final_results.append(f"Subquery {i+1}: {subquery}\n{formatted_results}\n")
+
             end_time = time.perf_counter()
 
-            state["optimized_query"] = optimized_query
+            # Aggregated formatted results
+            aggregated_results = "\n".join(final_results)
 
-            # Format the results as a string
-            formatted_results = self.format_results(results)
+            # Create a valid AIMessage with 'role' and 'content'
+            research_message = AIMessage(role="assistant", content=aggregated_results)
 
-            final_result.append({"subheader": f"Research Iteration", "content": [formatted_results], "time": end_time - start_time})
-            print(formatted_results)
-            return {"research": [AIMessage(content=formatted_results)]}
+            # Update the research in state with the valid AIMessage
+            state["research"].append(research_message)
+
+            # Return the result in the required format for the next step
+            return {"research": [research_message]}
 
         def format_results(self, results):
+            """
+            Formats the search results from Tavily tool.
+            """
             formatted = "Search Results:\n\n"
             for item in results:
                 formatted += f"Title: {item.get('title', 'N/A')}\n"
@@ -123,7 +164,6 @@ else:
                 formatted += f"Content: {item.get('content', 'N/A')}\n\n"
             return formatted
 
-        
     class EditorAgent:
         def evaluate_research(self, state: State):
             query = '\n'.join(message.content for message in state.get("query"))

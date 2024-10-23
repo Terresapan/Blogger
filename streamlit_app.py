@@ -12,6 +12,9 @@ from langchain_cerebras import ChatCerebras
 from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.callbacks.base import BaseCallbackHandler
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]["API_KEY"]
@@ -100,6 +103,7 @@ else:
                 include_raw_content=True,
                 include_images=True,
             )
+            self.executor = ThreadPoolExecutor(max_workers=5)  # Limit concurrent requests
 
         def format_search(self, query: str) -> str:
             prompt = (
@@ -133,21 +137,43 @@ else:
             return optimized_subqueries
             
         def search(self, state: State):
+            # Create an event loop if there isn't one
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            # Run the async search in the event loop
+            return loop.run_until_complete(self.async_search(state))
+
+        async def async_search(self, state: State):
             user_query = state.get('query', "")[-1].content
             optimized_queries = self.format_search(user_query)
             state["optimized_query"] = optimized_queries
-
-            final_results = []
-            for i, subquery in enumerate(optimized_queries):
-                results = self.tavily_tool.invoke({'query': subquery})
-                formatted_results = self.format_results(results)
-                final_results.append(f"Subquery {i+1}: {subquery}\n{formatted_results}\n")
-
+            
+            # Create tasks for all searches to run concurrently
+            tasks = [
+                self.search_single(subquery, i) 
+                for i, subquery in enumerate(optimized_queries)
+            ]
+            
+            # Run all searches concurrently and wait for all to complete
+            final_results = await asyncio.gather(*tasks)
+            
             aggregated_results = "\n".join(final_results)
             research_message = AIMessage(role="assistant", content=aggregated_results)
             state["research"].append(research_message)
-
             return {"research": [research_message]}
+        
+        async def search_single(self, subquery, index):
+            # Run the search in a thread pool to prevent blocking
+            results = await asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                self.tavily_tool.invoke,
+                {'query': subquery}
+            )
+            formatted_results = self.format_results(results)
+            return f"Subquery {index+1}: {subquery}\n{formatted_results}\n"
 
         def format_results(self, results):
             formatted = "Search Results:\n\n"
@@ -231,17 +257,21 @@ else:
 
             return {"content": generated_text}
 
+    # First create the agents
+    research_agent = ResearchAgent()
+    writer_agent = WriterAgent()
+    editor_agent = EditorAgent()
+    
     # Initialize the StateGraph
     graph = StateGraph(State)
 
-    graph.add_node("search_agent", ResearchAgent().search)
-    graph.add_node("writer_agent", WriterAgent().write_blogpost)
-    graph.add_node("editor_agent", EditorAgent().evaluate_research)
+    # Add nodes using the pre-initialized agents
+    graph.add_node("search_agent", research_agent.search)
+    graph.add_node("writer_agent", writer_agent.write_blogpost)
+    graph.add_node("editor_agent", editor_agent.evaluate_research)
 
     graph.set_entry_point("search_agent")
-
     graph.add_edge("search_agent", "editor_agent")
-
     graph.add_conditional_edges(
         "editor_agent",
         lambda state: "accept" if state.get("content_ready") else "revise",
@@ -275,6 +305,13 @@ else:
 
             with st.spinner("Generating detailed discussion..."):
                 start_time = time.perf_counter()
+
+                # Format the input properly as a list of messages
+                initial_state = {
+                    "query": [HumanMessage(content=user_input)],
+                    "research": [],
+                    "iteration_count": 1
+                }
                 
                 # Execute the graph with progress updates
                 blogpost = graph.invoke(

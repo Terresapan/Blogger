@@ -26,7 +26,7 @@ st.set_page_config(page_title="Short Video Theme Researcher", layout="wide")
 st.sidebar.header("✏️ Short Video Theme Researcher")
 st.sidebar.markdown(
     "This app helps you find trending short video themes based on your interests. "
-    "To use this app, you'll need to provide a Cerebras API key, which you can obtain for free [here](https://cloud.cerebras.ai/platform/org_nxh29kc28dt5rvrcphxv54et/apikeys) "
+    "To use this app, you'll need to provide a Groq API key, which you can obtain for free [here](https://console.groq.com/keys) "
     "and a Tavily Search key, which you can obtain [here](https://app.tavily.com/home)."
 )
 st.sidebar.write("### Instructions")
@@ -60,12 +60,12 @@ st.sidebar.image("assets/logo01.jpg", use_column_width=True)
 # API key inputs
 col1, col2 = st.columns(2)
 with col1:
-    cerebras_api_key = st.text_input("Cerebras API Key", type="password", key="cerebras_key")
+    cerebras_api_key = st.text_input("Groq API Key", type="password", key="cerebras_key")
 with col2:
     tavily_api_key = st.text_input("Tavily API Key", type="password", key="tavily_key")
 
 if not cerebras_api_key or not tavily_api_key:
-    st.info("Please add your Cerebras and Tavily API keys to continue.", icon="🗝️")
+    st.info("Please add your Groq and Tavily API keys to continue.", icon="🗝️")
 else:
     os.environ["TAVILY_API_KEY"] = tavily_api_key
 
@@ -91,7 +91,8 @@ else:
     # Initialize language model with streaming
     @st.cache_resource(show_spinner=False)
     def get_llm(api_key):
-        return ChatCerebras(api_key=api_key, model="llama3.1-70b", streaming=True)
+        # return ChatCerebras(api_key=api_key, model="llama3.1-70b", streaming=True)
+        return ChatGroq(api_key=api_key, model="llama-3.2-90b-text-preview", streaming=True)
 
     llm = get_llm(cerebras_api_key)
 

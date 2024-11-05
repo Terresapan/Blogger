@@ -18,7 +18,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]["API_KEY"]
-os.environ["LANGCHAIN_PROJECT"] = "Short Video Theme Researcher"
+LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
+LANGCHAIN_PROJECT = "Short Video Theme Researcher"
 
 # Streamlit UI setup
 st.set_page_config(page_title="Short Video Theme Researcher", layout="wide")
@@ -91,8 +92,8 @@ else:
     # Initialize language model with streaming
     @st.cache_resource(show_spinner=False)
     def get_llm(api_key):
-        # return ChatCerebras(api_key=api_key, model="llama3.1-70b", streaming=True)
-        return ChatGroq(api_key=api_key, model="llama-3.2-90b-text-preview", streaming=True)
+        return ChatCerebras(api_key=api_key, model="llama3.1-70b", streaming=True)
+        # return ChatGroq(api_key=api_key, model="llama-3.2-90b-text-preview", streaming=True)
 
     llm = get_llm(cerebras_api_key)
 

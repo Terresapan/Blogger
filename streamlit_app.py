@@ -92,8 +92,8 @@ else:
     # Initialize language model with streaming
     @st.cache_resource(show_spinner=False)
     def get_llm(api_key):
-        return ChatCerebras(api_key=api_key, model="llama3.1-70b", streaming=True)
-        # return ChatGroq(api_key=api_key, model="llama-3.2-90b-text-preview", streaming=True)
+        # return ChatCerebras(api_key=api_key, model="llama3.1-70b", streaming=True)
+        return ChatGroq(api_key=api_key, model="llama-3.2-90b-text-preview", streaming=True)
 
     llm = get_llm(cerebras_api_key)
 

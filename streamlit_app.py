@@ -18,8 +18,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
 os.environ["LANGCHAIN_API_KEY"] = st.secrets["LANGCHAIN_API_KEY"]["API_KEY"]
-LANGCHAIN_ENDPOINT="https://api.smith.langchain.com"
-LANGCHAIN_PROJECT = "Short Video Theme Researcher"
+os.environ["LANGCHAIN_ENDPOINT"]="https://api.smith.langchain.com"
+os.environ["LANGCHAIN_PROJECT"] = "Short Video Theme Researcher"
 
 # Streamlit UI setup
 st.set_page_config(page_title="Short Video Theme Researcher", layout="wide")

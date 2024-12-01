@@ -56,7 +56,7 @@ if st.sidebar.button("Submit Feedback"):
     else:
         st.sidebar.error("Please enter your feedback before submitting.")
 
-st.sidebar.image("assets/logo01.jpg", use_column_width=True)
+st.sidebar.image("assets/logo01.jpg", use_container_width=True)
 
 # API key inputs
 col1, col2 = st.columns(2)
@@ -93,7 +93,7 @@ else:
     @st.cache_resource(show_spinner=False)
     def get_llm(api_key):
         # return ChatCerebras(api_key=api_key, model="llama3.1-70b", streaming=True)
-        return ChatGroq(api_key=api_key, model="llama-3.2-90b-text-preview", streaming=True)
+        return ChatGroq(api_key=api_key, model="llama-3.1-70b-versatile", streaming=True)
 
     llm = get_llm(cerebras_api_key)
 
